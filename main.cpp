@@ -105,9 +105,9 @@ struct Server
     std::string modeName;
     std::string mapName;
     std::string verName;
-    unsigned char passworded;
+    unsigned char passworded{};
     std::vector<std::string> players;
-    unsigned short httpPort;
+    unsigned short httpPort{};
 };
 
 size_t parse_server(ASEBuffer& buffer, std::vector<Server>& servers)
