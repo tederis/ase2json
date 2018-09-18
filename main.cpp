@@ -94,41 +94,43 @@ private:
     size_t size{};
 };
 
-size_t parse_server(ASEBuffer& buffer, std::string& str)
+struct Server
 {
-    str += "{\n";
+    IPAddress ip;
+    unsigned short port{};
+    unsigned short playersCount{};
+    unsigned short maxPlayersCount{};
+    std::string gameName;
+    std::string serverName;
+    std::string modeName;
+    std::string mapName;
+    std::string verName;
+    unsigned char passworded;
+    std::vector<std::string> players;
+    unsigned short httpPort;
+};
 
+size_t parse_server(ASEBuffer& buffer, std::vector<Server>& servers)
+{
     unsigned short count = 0;
     buffer.read(count);
 
-    str += "    \"serversCount\": " + std::to_string(count) + ",\n";
-    str += "    \"servers\": [\n";
+    servers.reserve(count);
 
-    bool firstServer = true;
     while (buffer.step(6) && count--)
     {
-        if (!firstServer)
-            str += ",\n";
-        str += "        { ";
+        Server server;
 
-        IPAddress ip;
-        buffer.read(ip.Value);
-        str += "\"ip\": \"" + std::to_string(ip.Decomposed.a) + "." + std::to_string(ip.Decomposed.b)  + "." + std::to_string(ip.Decomposed.c) + "." + std::to_string(ip.Decomposed.d) + "\", ";
+        buffer.read(server.ip.Value);
 
-        unsigned short port = 0;
-        buffer.read(port);
-        str += "\"port\": " + std::to_string(port);
-        str += " }";
+        buffer.read(server.port);
+
+        servers.push_back(server);
     }
-
-    str += "    ]\n";
-    str += "}";
 }
 
-size_t parse_server_v2(ASEBuffer& buffer, std::string& str)
+size_t parse_server_v2(ASEBuffer& buffer, std::vector<Server>& servers)
 {
-    str += "{\n";
-
     unsigned int flags = 0;
     buffer.read(flags);
 
@@ -138,78 +140,50 @@ size_t parse_server_v2(ASEBuffer& buffer, std::string& str)
     unsigned int count = 0;
     buffer.read(count);
 
-    str += "    \"serversCount\": " + std::to_string(count) + ",\n";
-    str += "    \"servers\": [\n";
+    servers.reserve(count);
 
-    bool firstServer = true;
     while (buffer.step(6) && count--)
     {
-        if (!firstServer)
-            str += ",\n";
-        str += "        { ";
+        Server server;
 
         unsigned int startPos = buffer.tell();
 
         unsigned short len = 0;
         buffer.read(len);
 
-        IPAddress ip;
-        buffer.read(ip.Value);
-        str += "\"ip\": \"" + std::to_string(ip.Decomposed.a) + "." + std::to_string(ip.Decomposed.b)  + "." + std::to_string(ip.Decomposed.c) + "." + std::to_string(ip.Decomposed.d) + "\", ";
+        buffer.read(server.ip.Value);
 
-        unsigned short port = 0;
-        buffer.read(port);
-        str += "\"port\": " + std::to_string(port) + ", ";
+        buffer.read(server.port);
 
-        unsigned short playersCount = 0;
         if ((flags & ASE_PLAYER_COUNT) != 0)
-            buffer.read(playersCount);
-        str += "\"playersCount\": " + std::to_string(playersCount) + ", ";
+            buffer.read(server.playersCount);
 
-        unsigned short maxPlayersCount = 0;
         if ((flags & ASE_MAX_PLAYER_COUNT) != 0)
-            buffer.read(maxPlayersCount);
-        str += "\"maxPlayersCount\": " + std::to_string(maxPlayersCount) + ", ";
+            buffer.read(server.maxPlayersCount);
 
-        std::string gameName;
         if ((flags & ASE_GAME_NAME) != 0)
-            buffer.readString(gameName);
-        str += "\"gameName\": \"" + gameName + "\", ";
+            buffer.readString(server.gameName);
 
-        std::string serverName;
+
         if ((flags & ASE_SERVER_NAME) != 0)
-            buffer.readString(serverName);
-        str += "\"serverName\": \"" + serverName + "\", ";
+            buffer.readString(server.serverName);
 
-        std::string modeName;
         if ((flags & ASE_GAME_MODE) != 0)
-            buffer.readString(modeName);
-        str += "\"modeName\": \"" + modeName + "\", ";
+            buffer.readString(server.modeName);
 
-        std::string mapName;
         if ((flags & ASE_MAP_NAME) != 0)
-            buffer.readString(mapName);
-        str += "\"mapName\": \"" + mapName + "\", ";
+            buffer.readString(server.mapName);
 
-        std::string verName;
         if ((flags & ASE_SERVER_VER) != 0)
-            buffer.readString(verName);
-        str += "\"version\": \"" + verName + "\", ";
+            buffer.readString(server.verName);
 
-        unsigned char passworded;
         if ((flags & ASE_PASSWORDED) != 0)
-            buffer.read(passworded);
-        if (passworded != 0)
-            str += "\"passworded\": true, ";
-        else
-            str += "\"passworded\": false, ";
+            buffer.read(server.passworded);
 
         unsigned char serials;
         if ((flags & ASE_SERIALS) != 0)
             buffer.read(serials);
 
-        str += "\"players\": [";
-        std::vector<std::string> players;
         if ((flags & ASE_PLAYER_LIST) != 0)
         {
             unsigned short listSize = 0;
@@ -219,12 +193,10 @@ size_t parse_server_v2(ASEBuffer& buffer, std::string& str)
             {
                 std::string playerName;
                 buffer.readString(playerName);
-                players.push_back(playerName);
 
-                str += "\"" + playerName + "\", ";
+                server.players.push_back(playerName);
             }
         }
-        str += "], ";
 
         unsigned char noResponce;
         if ((flags & ASE_RESPONDING) != 0)
@@ -247,23 +219,71 @@ size_t parse_server_v2(ASEBuffer& buffer, std::string& str)
         if ((flags & ASE_KEEP_FLAG) != 0)
             buffer.read(keepFlag);
 
-        unsigned short httpPort = 0;
         if ((flags & ASE_HTTP_PORT) != 0)
-            buffer.read(httpPort);
-        str += "\"httpPort\": " + std::to_string(httpPort);
+            buffer.read(server.httpPort);
 
         unsigned char specialFlags = 0;
         if ((flags & ASE_SPECIAL) != 0)
             buffer.read(specialFlags);
 
         buffer.seek(startPos + len);
-        firstServer = false;
 
-        str += " }";
+        servers.push_back(server);
+    }
+}
+
+void write_servers(const std::vector<Server>& servers, std::string& str, bool light = false)
+{
+    unsigned short playersCountTotal = 0;
+    for(const auto& server : servers)
+        playersCountTotal += server.playersCount;
+
+    str += "{\n";
+    str += "    \"serversCount\": " + std::to_string(servers.size()) + ",\n";
+    str += "    \"playersCount\": " + std::to_string(playersCountTotal);
+
+    if (!light)
+    {
+        str += ",\n";
+        str += "    \"servers\": [\n";
+
+        bool firstServer = true;
+        for(const auto& server : servers)
+        {
+            if (!firstServer)
+                str += ",\n";
+            str += "        { ";
+
+            str += "\"ip\": \"" + std::to_string(server.ip.Decomposed.a) + "." + std::to_string(server.ip.Decomposed.b)  + "." + std::to_string(server.ip.Decomposed.c) + "." + std::to_string(server.ip.Decomposed.d) + "\", ";
+            str += "\"port\": " + std::to_string(server.port) + ", ";
+            str += "\"playersCount\": " + std::to_string(server.playersCount) + ", ";
+            str += "\"maxPlayersCount\": " + std::to_string(server.maxPlayersCount) + ", ";
+            str += "\"gameName\": \"" + server.gameName + "\", ";
+            str += "\"serverName\": \"" + server.serverName + "\", ";
+            str += "\"modeName\": \"" + server.modeName + "\", ";
+            str += "\"mapName\": \"" + server.mapName + "\", ";
+            str += "\"version\": \"" + server.verName + "\", ";
+            if (server.passworded != 0)
+                str += "\"passworded\": true, ";
+            else
+                str += "\"passworded\": false, ";
+            str += "\"players\": [";
+            for (const auto& playerName : server.players)
+            {
+                str += "\"" + playerName + "\", ";
+            }
+            str += "], ";
+            str += "\"httpPort\": " + std::to_string(server.httpPort);
+
+            firstServer = false;
+
+            str += " }";
+        }
+
+        str += "\n    ]";
     }
 
-    str += "    ]\n";
-    str += "}";
+    str += "\n}";
 }
 
 size_t callback(char* content, size_t size, size_t nmemb, void* userdata)
@@ -301,12 +321,16 @@ int main(int argc, char* argv[])
     if (count == 0)
         buffer.read(ver);
 
-    std::string output;
+    std::vector<Server> servers;
 
     if (ver == 0)
-        parse_server(buffer, output);
+        parse_server(buffer, servers);
     else if (ver == 2)
-        parse_server_v2(buffer, output);
+        parse_server_v2(buffer, servers);
+
+    std::string output;
+    bool lightData = argc > 1 && strcmp(argv[1], "-l") == 0;
+    write_servers(servers, output, lightData);
 
     std::cout << output << std::endl;
 
